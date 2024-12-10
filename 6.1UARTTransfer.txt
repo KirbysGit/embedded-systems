@@ -1,0 +1,72 @@
+#include <msp430.h>
+
+void Initialize_UART(void);
+void uart_write_char(unsigned char ch);
+unsigned char uart_read_char(void);
+
+#define redLED BIT0
+#define greenLED BIT7
+#define FLAGS UCA1IFG
+#define RXFLAG UCRXIFG
+#define TXFLAG UCTXIFG
+#define TXBUFFER UCA1TXBUF
+#define RXBUFFER UCA1RXBUF
+
+volatile unsigned char received_char = '\0';
+
+int main(void) {
+    WDTCTL = WDTPW | WDTHOLD;
+    PM5CTL0 &= ~LOCKLPM5;
+
+    Initialize_UART();
+    P1DIR |= redLED;
+    P9DIR |= greenLED;
+    P1OUT &= ~redLED;
+    P9OUT &= ~greenLED;
+
+    unsigned char i;
+    while(1) {
+        P1OUT ^= redLED;
+        for (i = '0'; i <= '9'; i++) {
+            uart_write_char(i);
+            uart_write_char('\n');
+            uart_write_char('\r');
+            __delay_cycles(100000);
+        }
+
+        unsigned char received_char = uart_read_char();
+        if (received_char == '1') {
+            P9OUT |= greenLED;
+        } else if (received_char == '2') {
+            P9OUT &= ~greenLED;
+        }
+    }
+}
+
+void Initialize_UART(void) {
+    P3SEL1 &= ~(BIT4|BIT5);
+    P3SEL0 |= (BIT4|BIT5);
+
+    UCA1CTLW0 = UCSWRST;
+    UCA1CTLW0 |= UCSSEL_2;
+    UCA1BRW = 6;
+    UCA1MCTLW = UCBRF3 | UCBRS5 | UCOS16;
+
+    UCA1CTLW0 &= ~UCSWRST;
+}
+
+void uart_write_char(unsigned char ch) {
+    while ( (FLAGS & TXFLAG) == 0) {}
+
+    TXBUFFER = ch;
+}
+
+unsigned char uart_read_char() {
+    unsigned char temp;
+
+    if ( (FLAGS & RXFLAG) == 0)
+        return 0;
+
+    temp = RXBUFFER;
+    return temp;
+}

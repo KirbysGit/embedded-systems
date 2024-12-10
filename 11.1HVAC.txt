@@ -1,0 +1,62 @@
+#include <msp430fr6989.h>
+
+#define redLED BIT0
+#define greenLED BIT7
+#define BUT1 BIT1
+
+void main(void) {
+    WDTCTL = WDTPW | WDTHOLD;
+    PM5CTL0 &= ~LOCKLPM5;
+
+    P1DIR |= redLED;
+    P9DIR |= greenLED;
+    P1OUT &= ~redLED;
+    P9OUT &= ~greenLED;
+
+    P1DIR &= ~BUT1;
+    P1OUT |= BUT1;
+    P1REN |= BUT1;
+    P1IE |= BUT1;
+    P1IES |= BUT1;
+    P1IFG &= ~BUT1;
+
+    TA0CCTL1 = CCIE;
+    TA0CCR1 = 4096 - 1;
+    TA0CCTL2 = 0;
+
+    TA0CTL = TASSEL_1 | MC_2 | ID_2 | TACLR;
+
+    _enable_interrupts();
+
+    while(1) {
+        __low_power_mode_3();
+    }
+}
+
+#pragma vector=PORT1_VECTOR
+__interrupt void Port1_ISR(void) {
+    if (!(TA0CCTL2 & CCIE)) {
+        P1IFG &= ~BUT1;
+        P1IE &= ~BUT1;
+        TA0CCR2 = TA0R + 24576;
+        TA0CCTL2 = CCIE;
+        TA0CCTL2 &= ~CCIFG;
+    }
+}
+
+#pragma vector=TIMER0_A1_VECTOR
+__interrupt void Timer_A1_ISR(void) {
+    if (TA0CCTL1 & CCIFG) {
+        P9OUT ^= greenLED;
+        TA0CCR1 += 4096;
+        TA0CCTL1 &= ~CCIFG;
+    }
+
+    if ((TA0CCTL2 & CCIE) && (TA0CCTL2 & CCIFG)) {
+        P1OUT ^= redLED;
+        TA0CCTL2 &= ~CCIE;
+        P1IFG &= ~BUT1;
+        TA0CCTL2 &= ~CCIFG;
+        P1IE |= BUT1;
+    }
+}

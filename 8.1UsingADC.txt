@@ -1,0 +1,114 @@
+#include <msp430.h>
+
+void Initialize_ADC(void);
+void Initialize_UART(void);
+void uart_write_char(unsigned char ch);
+void uart_write_uint16(unsigned int n);
+void uart_write_string(char* str);
+unsigned char uart_read_char(void);
+
+#define redLED BIT0 // Red at P1.0
+
+#define FLAGS UCA1IFG
+#define RXFLAG UCRXIFG
+#define TXFLAG UCTXIFG
+#define TXBUFFER UCA1TXBUF
+#define RXBUFFER UCA1RXBUF
+
+int main (void) {
+    WDTCTL = WDTPW | WDTHOLD;
+    PM5CTL0 &= ~LOCKLPM5;
+
+    Initialize_UART();
+    Initialize_ADC();
+
+    P1DIR |= redLED;
+    P1OUT &= ~redLED;
+
+    while (1) {
+        ADC12CTL0 |= ADC12SC;
+
+        while(ADC12BUSY == 0) {};
+
+        uart_write_uint16(ADC12MEM0);
+        uart_write_string("\n\n\r");
+
+        P1OUT ^= redLED;
+
+        __delay_cycles(1000000);
+    }
+}
+
+void Initialize_UART(void) {
+    P3SEL1 &= ~(BIT4|BIT5);
+    P3SEL0 |= (BIT4|BIT5);
+
+    UCA1CTLW0 = UCSWRST;
+    UCA1CTLW0 |= UCSSEL_2;
+    UCA1BRW = 6;
+    UCA1MCTLW = UCBRF3 | UCBRS5 | UCOS16;
+
+    UCA1CTLW0 &= ~UCSWRST;
+}
+
+void Initialize_ADC(void) {
+    P9SEL1 |= BIT2;
+    P9SEL0 |= BIT2;
+
+    ADC12CTL0 |= ADC12ON;
+
+    ADC12CTL0 &= ~ADC12ENC;
+
+    ADC12CTL0 |= ADC12SHT0_3; // 32 Cycles
+
+    ADC12CTL1 |= ADC12SHS_0 | ADC12SHP | ADC12DIV_0 | ADC12SSEL_0;
+
+    ADC12CTL2 |= ADC12RES_2;
+
+    ADC12MCTL0 |= ADC12VRSEL_0 | ADC12INCH_10;
+
+    ADC12CTL0 |= ADC12ENC;
+
+    return;
+}
+
+void uart_write_char(unsigned char ch) {
+    while ( (FLAGS & TXFLAG) == 0) {}
+
+    TXBUFFER = ch;
+}
+
+unsigned char uart_read_char() {
+    unsigned char temp;
+
+    if ( (FLAGS & RXFLAG) == 0)
+        return 0;
+
+    temp = RXBUFFER;
+    return temp;
+}
+
+void uart_write_uint16(unsigned int n) {
+    char buffer[6];
+    unsigned int i = 0, j;
+
+    do {
+        buffer[i++] = (n % 10) + '0';
+        n /= 10;
+    } while (n > 0);
+
+    buffer[i] = '\0';
+
+    for (j = i - 1; j != (unsigned int)-1; j--) {
+        uart_write_char(buffer[j]);
+    }
+}
+
+void uart_write_string(char* str) {
+    while (*str != '\0') {
+        uart_write_char(*str++);
+    }
+}
+
+
+

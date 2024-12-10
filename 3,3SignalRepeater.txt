@@ -1,0 +1,89 @@
+#include <msp430fr6989.h>
+
+#define redLED BIT0  // Red LED connected to P1.0
+#define greenLED BIT7  // Green LED connected to P9.7
+#define BUT1 BIT1  // Button 1 connected to P1.1
+#define BUT2 BIT2  // Button 2 connected to P1.2
+
+// *********************************
+// Configures ACLK to 32 KHz crystal
+void config_ACLK_to_32kHz_crystal() {
+    // By default, ACLK runs on LFMODCLK at 5 MHz / 128 = 39 KHz
+
+    // Reroute pins to LFXIN/LFXOUT functionality
+    PJSEL1 &= ~BIT4;
+    PJSEL0 |= BIT4;
+
+    // Wait until the oscillator fault flags remain cleared
+    CSCTL0 = CSKEY;                 // Unlock CS registers
+    do {
+        CSCTL5 &= ~LFXTOFFG;        // Local Fault Flag
+        SFRIFG1 &= ~OFIFG;          // Global Fault Flag
+    } while (CSCTL5 & LFXTOFFG);    //
+
+    CSCTL0_H = 0;                   // Lock CS registers
+    return;
+}
+
+int main(void) {
+    WDTCTL = WDTPW | WDTHOLD; // Stop watchdog timer
+    PM5CTL0 &= ~LOCKLPM5; // Disable the GPIO high-impedance mode
+
+    P1DIR &= ~(BUT1 | BUT2); // Set buttons pins as inputs
+    P1REN |= (BUT1 | BUT2); // Enable pull-up resistors for button pins
+    P1OUT |= (BUT1 | BUT2); // Set pull-up resistors
+
+    P1DIR |= redLED; // Set redLED pin as output
+    P1OUT &= ~redLED; // Ensure LED is off initially
+
+    P9DIR |= greenLED; // Set greenLED pin as output
+    P9OUT &= ~greenLED; // Ensure green LED is off initially
+
+    config_ACLK_to_32kHz_crystal();
+
+    // Main loop
+    for (;;) {
+        // Timer configuration for ACLK, continuous mode, clear TAR
+        TA0CTL = TASSEL__ACLK | MC__2 | TACLR;
+
+        // Wait for BUT1 to be pressed
+        while (P1IN & BUT1) {}
+
+        // Start timer in continuous mode, clear TAR to start from 0
+        TA0CTL |= TACLR;
+
+        // Wait for BUT1 to be released
+        while (!(P1IN & BUT1)) {}
+
+        // Stop the timer to capture the time
+        TA0CTL &= ~MC__2;
+
+        // Check for signal duration too long (TAR rollover)
+        if (TA0CTL & TAIFG) {
+            // Signal too long, indicate error
+            P9OUT |= greenLED; // Turn on green LED
+
+            // Wait for BUT2 to reset the error
+            while (P1IN & BUT2) {}
+
+            P9OUT &= ~greenLED; // Turn off green LED
+        } else {
+            // Replay the pulse duration on the red LED
+            P1OUT |= redLED; // Turn on red LED
+
+            // Restart the timer in up mode to count up to the captured duration
+            TA0CCR0 = TA0R; // Set the timer to count up to the captured value
+            TA0CTL |= MC__1 | TACLR; // Start timer in up mode
+
+            while (!(TA0CTL & TAIFG)) {} // Wait for timer to reach the captured value
+
+            P1OUT &= ~redLED; // Turn off red LED
+
+            TA0CTL &= ~TAIFG; // Clear the interrupt flag
+        }
+
+        TA0CTL &= ~MC__1; // Ensure the timer is stopped
+    }
+
+    return 0;
+}

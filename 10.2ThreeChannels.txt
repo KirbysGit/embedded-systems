@@ -1,0 +1,76 @@
+#include <msp430fr6989.h>
+#define redLED BIT0
+#define greenLED BIT7
+volatile unsigned int status = 1;
+
+void main(void) {
+    WDTCTL = WDTPW | WDTHOLD;
+    PM5CTL0 &= ~LOCKLPM5;
+
+    P1DIR |= redLED;
+    P9DIR |= greenLED;
+    P1OUT &= ~redLED;
+    P9OUT &= ~greenLED;
+
+    TA0CCR0 = 819 - 1;
+    TA0CCTL0 |= CCIE;
+    TA0CCTL0 &= ~CCIFG;
+
+    TA0CCR1 = 4096 - 1;
+    TA0CCTL1 |= CCIE;
+    TA0CCTL1 &= ~CCIFG;
+
+    TA0CCR2 = 32768 - 1;
+    TA0CCTL2 |= CCIE;
+    TA0CCTL2 &= ~CCIFG;
+
+    TA0CTL = TASSEL_1 | ID_2 | MC_2 | TACLR; // ACLK
+
+    _low_power_mode_3();
+
+    while (1) {}
+}
+
+#pragma vector = TIMER0_A0_VECTOR
+__interrupt void T0A0_ISR() {
+    P1OUT ^= redLED;
+    TA0CCR0 += 819; // Schedule the next Interrupt.
+    // Hardware clears Channel 0 flag.
+    status = 0;
+}
+
+#pragma vector = TIMER0_A1_VECTOR
+__interrupt void T0A1_ISR() {
+    if ((TA0CCTL1 & CCIFG) != 0) {
+        P9OUT ^= greenLED;
+        TA0CCR1 += 4095;
+        TA0CCTL1 &= ~CCIFG;
+        status = 0;
+    }
+
+    if ((TA0CCTL2 & CCIFG) != 0) {
+        if (status == 0) {
+            P1OUT &= ~redLED;
+            P9OUT &= ~greenLED;
+
+            TA0CCTL0 &= ~CCIE;
+            TA0CCTL1 &= ~CCIE;
+
+            TA0CCR0 += 32767;
+            TA0CCTL0 &= ~CCIFG;
+            TA0CCTL0 |= CCIE;
+
+            TA0CCR1 += 32767;
+            TA0CCTL1 &= ~CCIFG;
+            TA0CCTL1 |= CCIE;
+
+            status = 1;
+        }
+
+        TA0CCR2 += 32767;
+        TA0CCTL2 &= ~CCIFG;
+    }
+
+}
+
+

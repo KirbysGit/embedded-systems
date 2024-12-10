@@ -1,0 +1,101 @@
+#include <msp430fr6989.h>
+
+#define redLED BIT0
+#define greenLED BIT7
+
+#define FLAGS UCA1IFG
+#define RXFLAG UCRXIFG
+#define TXFLAG UCTXIFG
+#define TXBUFFER UCA1TXBUF
+#define RXBUFFER UCA1RXBUF
+
+void Initialize_UART(void);
+void uart_write_char(unsigned char ch);
+void uart_write_uint16(unsigned int n);
+void uart_write_string(char* str);
+
+void main(void) {
+    WDTCTL = WDTPW | WDTHOLD;
+    PM5CTL0 &= ~LOCKLPM5;
+
+    P1DIR |= redLED;
+    P9DIR |= greenLED;
+    P1OUT &= ~redLED;
+    P9OUT &= ~greenLED;
+
+    Initialize_UART();
+
+    P1DIR &= ~BIT1;
+    P1SEL0 |= BIT1;
+    P1SEL1 &= ~BIT1;
+    P1REN |= BIT1;
+    P1OUT |= BIT1;
+
+    TA0CCR2 = 65535 - 1;
+    TA0CCTL2 |= CCIE;
+    TA0CCTL2 &= ~CCIFG;
+
+    TA0CCTL2 = CM_3 | CCIS_0 | CAP | CCIE;
+
+    TA0CTL = TASSEL_1 | ID_0 | MC_2 | TACLR;
+
+    _enable_interrupts();
+
+    for(;;) {
+    }
+}
+
+#pragma vector=TIMER0_A1_VECTOR
+__interrupt void Timer_A0(void) {
+    P9OUT ^= greenLED;
+    if ((TA0CCTL2 & CCIFG) != 0) {
+        TA0CCTL2 &= ~CCIFG;
+        unsigned int captureValue = TA0CCR2;
+
+        uart_write_uint16(captureValue);
+        uart_write_string("\r\n");
+
+        __delay_cycles(2000000);
+    }
+}
+
+void Initialize_UART(void) {
+    P3SEL1 &= ~(BIT4 | BIT5);
+    P3SEL0 |= (BIT4 | BIT5);
+
+    UCA1CTLW0 = UCSWRST;
+    UCA1CTLW0 |= UCSSEL_2;
+    UCA1BRW = 6;
+    UCA1MCTLW = UCBRF_8 | UCBRS0 | UCOS16;
+    UCA1CTLW0 &= ~UCSWRST;
+}
+
+void uart_write_char(unsigned char ch) {
+    while (!(FLAGS & TXFLAG));
+    TXBUFFER = ch;
+}
+
+void uart_write_uint16(unsigned int n) {
+    char buffer[6];
+    unsigned int i = 0, j;
+
+    if (n == 0) {
+        uart_write_char('0');
+        return;
+    }
+
+    while (n > 0) {
+        buffer[i++] = (n % 10) + '0';
+        n /= 10;
+    }
+
+    for (j = i; j > 0; j--) {
+        uart_write_char(buffer[j - 1]);
+    }
+}
+
+void uart_write_string(char* str) {
+    while (*str != '\0') {
+        uart_write_char(*str++);
+    }
+}

@@ -1,0 +1,136 @@
+#include "msp430fr6989.h"
+#include "Grlib/grlib/grlib.h"          // Graphics library (grlib)
+#include "LcdDriver/lcd_driver.h"       // LCD driver
+#include <stdio.h>
+
+#define redLED BIT0
+#define greenLED BIT7
+#define BUT BIT1
+
+void config_ACLK_to_32KHz_crystal() {
+    // Reroute pins to LFXIN/LFXOUT functionality
+    PJSEL1 &= ~BIT4; // set to 0
+    PJSEL0 |= BIT4;    // set to 1
+
+    // Wait until the oscillator fault flags remain cleared
+    CSCTL0 = CSKEY; // Unlock CS registers
+    do {
+        CSCTL5 &= ~LFXTOFFG; // Local fault flag
+        SFRIFG1 &= ~OFIFG; // Global fault flag
+    } while((CSCTL5 & LFXTOFFG) != 0);
+
+    CSCTL0_H = 0; // Lock CS registers
+    return;
+}
+
+
+void main(void) {
+    char counter= 0;    // Declarations.
+    char mystring[20];
+
+    WDTCTL = WDTPW | WDTHOLD;     // Stop the Watchdog timer
+    PM5CTL0 &= ~LOCKLPM5;         // Disable GPIO power-on default high-impedance mode
+
+    // Configure LEDs.
+    P1DIR |= redLED;
+    P1OUT &= ~redLED;
+    P9DIR |= greenLED;
+    P9OUT &= ~greenLED;
+
+    // Configure Buttons.
+    P1DIR &= ~BUT;
+    P1REN |= BUT;
+    P1OUT |= BUT;
+
+    // Configure ACLK.s
+    config_ACLK_to_32KHz_crystal();
+
+    // Configure Timer_A.
+    TA0CTL = TASSEL_1 | ID_0 | MC_1 | TACLR;
+
+    // 1 second delay.
+    TA0CCR0 = 32768 - 1;
+
+    // Clear Flg. Unlock CS Registers.
+    TA0CTL &= ~TAIFG;
+
+    CSCTL0 = CSKEY;
+    CSCTL3 &= ~(BIT4|BIT5|BIT6);
+    CSCTL0_H = 0;
+
+    ////////////////////////////////////////////////////////////////////////////////////////////
+    Graphics_Context g_sContext;        // Declare a graphic library context
+    Crystalfontz128x128_Init();         // Initialize the display
+
+    // Set the screen orientation
+    Crystalfontz128x128_SetOrientation(0);
+
+    // Initialize the context
+    Graphics_initContext(&g_sContext, &g_sCrystalfontz128x128);
+
+    // Set background color
+    Graphics_setBackgroundColor(&g_sContext, GRAPHICS_COLOR_LIGHT_BLUE);
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+
+    int cur = 1; // Holds val corresponding to screen.
+
+    while(1){
+        if ((P1IN & BUT) == 0){
+            P1OUT ^= redLED;
+            P9OUT ^= greenLED;
+            Graphics_clearDisplay(&g_sContext);
+            cur = -cur;
+        }
+
+        if (cur == 1) { // When Cur = 1.
+
+            extern tImage  UCF_Logo;
+            Graphics_drawImage(&g_sContext, &UCF_Logo, 0, 0); // Display Logo.
+
+            counter = 0; // Reset Counter.
+        }
+        else {
+
+            Graphics_setForegroundColor(&g_sContext, GRAPHICS_COLOR_YELLOW);
+
+            Graphics_fillCircle(&g_sContext, 32, 32, 16);
+
+            Graphics_setForegroundColor(&g_sContext, GRAPHICS_COLOR_GREEN);
+
+            tRectangle grass = {0, 109, 127, 127};
+
+            Graphics_fillRectangle(&g_sContext, &grass);
+
+            Graphics_setForegroundColor(&g_sContext, GRAPHICS_COLOR_GRAY);
+
+            tRectangle road = {0, 100, 127, 108};
+
+            Graphics_fillRectangle(&g_sContext, &road);
+
+            Graphics_setForegroundColor(&g_sContext, GRAPHICS_COLOR_BLACK);
+
+            Graphics_drawCircle(&g_sContext, 95, 63, 8);
+
+            tRectangle body = {93, 71, 97, 86};
+
+            Graphics_drawRectangle(&g_sContext, &body);
+
+            Graphics_drawLineH(&g_sContext, 97, 105, 78);
+
+            Graphics_drawLineH(&g_sContext, 85, 93, 78);
+
+            Graphics_drawLineV(&g_sContext, 92, 86, 100);
+
+            Graphics_drawLineV(&g_sContext, 98, 86, 100);
+
+            GrContextFontSet(&g_sContext, &g_sFontFixed6x8);
+
+            Graphics_drawStringCentered(&g_sContext, "The", 3, 64, 16, OPAQUE_TEXT);
+
+            GrContextFontSet(&g_sContext, &g_sFontCm16);
+
+            Graphics_drawStringCentered(&g_sContext, "Park", 4, 64, 26, OPAQUE_TEXT);
+        }
+    }
+}

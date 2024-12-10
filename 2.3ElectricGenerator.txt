@@ -1,0 +1,62 @@
+#include <msp430fr6989.h>
+#define redLED BIT0
+#define greenLED BIT7
+#define BUT1 BIT1
+// check bit to make sure its right
+#define BUT2 BIT2
+
+void main (void) {
+    WDTCTL = WDTPW | WDTHOLD;
+    PM5CTL0 &= ~LOCKLPM5;
+
+    P1DIR |= redLED;
+    P9DIR |= greenLED;
+    P1OUT &= ~redLED;
+    P9OUT &= ~greenLED;
+
+    P1DIR &= ~BUT1;
+    P1REN |= BUT1;
+    P1OUT |= BUT1;
+
+    P1DIR &= ~BUT2;
+    P1REN |= BUT2;
+    P1OUT |= BUT2;
+
+    int redFlag = 0;
+    int greenFlag = 0;
+
+    for(;;) {
+        if (!(P1IN & BUT1)) {
+            if (!(P9OUT & greenLED)) {
+                P1OUT |= redLED;
+            } else {
+                redFlag = 1;
+            }
+        } else {
+            if (P1OUT & redLED) {
+                P1OUT &= ~redLED;
+                if (greenFlag) {
+                    P9OUT |= greenLED;
+                    greenFlag = 0;
+                }
+            }
+        }
+
+        if (!(P1IN & BUT2)) {
+            if(!(P1OUT & redLED)) {
+                P9OUT |= greenLED;
+            } else {
+                greenFlag = 1;
+            }
+        } else {
+            if (P9OUT & greenLED) {
+                P9OUT &= ~greenLED;
+                if (redFlag) {
+                    P9OUT |= redLED;
+                    redFlag = 0;
+                }
+            }
+        }
+
+    }
+}
